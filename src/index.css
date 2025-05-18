@@ -1,0 +1,132 @@
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 230 55% 8%;
+    --foreground: 210 40% 98%;
+
+    --card: 230 55% 12%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 230 55% 10%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 180 100% 50%;
+    --primary-foreground: 230 55% 8%;
+
+    --secondary: 265 100% 48%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 230 55% 15%;
+    --muted-foreground: 215 20.2% 65.1%;
+
+    --accent: 265 100% 48%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 230 55% 20%;
+    --input: 230 55% 18%;
+    --ring: 180 100% 50%;
+
+    --radius: 0.75rem;
+
+    --sidebar-background: 230 55% 10%;
+    --sidebar-foreground: 210 40% 90%;
+    --sidebar-primary: 180 100% 50%;
+    --sidebar-primary-foreground: 230 55% 10%;
+    --sidebar-accent: 230 55% 15%;
+    --sidebar-accent-foreground: 210 40% 90%;
+    --sidebar-border: 230 55% 20%;
+    --sidebar-ring: 180 100% 50%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-synergy-navy text-foreground font-space tracking-wide;
+    background-image: radial-gradient(circle at 50% 50%, rgba(109, 0, 247, 0.1) 0%, rgba(10, 15, 44, 0.9) 80%);
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-synergy-navy/50;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-synergy-violet/50 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-synergy-violet/80;
+  }
+}
+
+@layer utilities {
+  .glass {
+    @apply bg-white/5 backdrop-blur-lg border border-white/10 rounded-xl shadow-glass;
+  }
+  
+  .glass-card {
+    @apply glass relative overflow-hidden transition-all duration-300 hover:bg-white/10;
+  }
+  
+  .glass-dark {
+    @apply bg-synergy-navy/80 backdrop-blur-lg border border-white/5 rounded-xl shadow-glass;
+  }
+
+  .neon-border-cyan {
+    @apply border border-synergy-cyan/50 shadow-neon-cyan;
+  }
+  
+  .neon-border-violet {
+    @apply border border-synergy-violet/50 shadow-neon-violet;
+  }
+  
+  .text-glow-cyan {
+    @apply text-synergy-cyan drop-shadow-[0_0_3px_rgba(0,255,255,0.5)];
+  }
+  
+  .text-glow-violet {
+    @apply text-synergy-violet drop-shadow-[0_0_3px_rgba(109,0,247,0.5)];
+  }
+
+  .animated-gradient {
+    background: linear-gradient(-45deg, #0A0F2C, #1a1f3c, #321873, #6D00F7);
+    background-size: 400% 400%;
+    animation: gradient-shift 15s ease infinite;
+  }
+  
+  .star-field {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 200%;
+    animation: star-field 60s linear infinite;
+  }
+  
+  .star-field::before {
+    content: '';
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    background-image: radial-gradient(2px 2px at calc(random(100) * 1%) calc(random(100) * 1%), white, transparent),
+                      radial-gradient(2px 2px at calc(random(100) * 1%) calc(random(100) * 1%), white, transparent),
+                      radial-gradient(2px 2px at calc(random(100) * 1%) calc(random(100) * 1%), white, transparent);
+    background-size: 200px 200px;
+    opacity: 0.3;
+  }
+}
