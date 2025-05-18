@@ -1,14 +1,21 @@
-
+import React from "react";
+import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import Projects from "./pages/Projects";
+import Project from "./pages/Project";
+import MyTasks from "./pages/MyTasks";
+import ProjectCreateEdit from "./pages/ProjectCreateEdit";
+import TaskCreateEdit from "./pages/TaskCreateEdit";
+import Settings from "./pages/Settings";
+import Empty from "./pages/Empty";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
-import Project from "./pages/Project";
 import NotFound from "./pages/NotFound";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import ForgotPassword from "./pages/ForgotPassword";
 
 // Define QueryClient with better error handling
 const queryClient = new QueryClient({
@@ -53,42 +60,35 @@ const ProtectedRoute = ({
   return children;
 };
 
-// This wrapper is needed because useAuth must be used within AuthProvider
-const AppRoutes = () => {
-  return (
-    <Routes>
-      <Route path="/" element={<Navigate to="/login" replace />} />
-      <Route path="/login" element={<Login />} />
-      <Route path="/dashboard" element={
-        <ProtectedRoute>
-          <Dashboard />
-        </ProtectedRoute>
-      } />
-      <Route path="/projects/:id" element={
-        <ProtectedRoute>
-          <Project />
-        </ProtectedRoute>
-      } />
-      <Route path="/projects/new" element={
-        <ProtectedRoute>
-          <Dashboard />
-        </ProtectedRoute>
-      } />
-      <Route path="*" element={<NotFound />} />
-    </Routes>
-  );
-};
-
-const App = () => (
+const App: React.FC = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <BrowserRouter>
+      <Router>
         <AuthProvider>
-          <AppRoutes />
+          <Routes>
+            <Route path="/" element={<Navigate to="/projects" />} />
+            <Route path="/projects" element={<Projects />} />
+            <Route path="/projects/:id" element={<Project />} />
+            <Route path="/my-tasks" element={<MyTasks />} />
+            <Route path="/projects/new" element={<ProjectCreateEdit />} />
+            <Route path="/projects/:id/edit" element={<ProjectCreateEdit />} />
+            <Route path="/tasks/new" element={<TaskCreateEdit />} />
+            <Route path="/tasks/:id/edit" element={<TaskCreateEdit />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="/empty" element={<Empty />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/dashboard" element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            } />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
         </AuthProvider>
-      </BrowserRouter>
+      </Router>
     </TooltipProvider>
   </QueryClientProvider>
 );

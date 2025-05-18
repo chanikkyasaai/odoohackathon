@@ -1,16 +1,16 @@
-
--- Create profiles table (extends auth.users)
-create table profiles (
-  id uuid references auth.users on delete cascade primary key,
-  email text not null,
+-- USERS (Profiles, extends auth.users)
+create table if not exists profiles (
+  id uuid primary key references auth.users on delete cascade,
+  email text not null unique,
   name text not null,
   image text,
   role text not null default 'member',
   created_at timestamptz default now() not null
 );
 
--- Create projects table
-create table projects (
+-- PROJECTS
+delete from projects;
+create table if not exists projects (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   description text,
@@ -18,11 +18,15 @@ create table projects (
   due_date date not null,
   status text not null default 'new',
   owner_id uuid references profiles(id) not null,
+  image text,
+  tags text[],
+  priority text not null default 'medium',
+  manager_id uuid references profiles(id),
   created_at timestamptz default now() not null
 );
 
--- Create project_members table (join table)
-create table project_members (
+-- PROJECT MEMBERS
+create table if not exists project_members (
   id uuid primary key default gen_random_uuid(),
   project_id uuid references projects(id) on delete cascade not null,
   user_id uuid references profiles(id) on delete cascade not null,
@@ -31,8 +35,8 @@ create table project_members (
   unique(project_id, user_id)
 );
 
--- Create tasks table
-create table tasks (
+-- TASKS
+create table if not exists tasks (
   id uuid primary key default gen_random_uuid(),
   project_id uuid references projects(id) on delete cascade not null,
   title text not null,
@@ -41,11 +45,14 @@ create table tasks (
   column_id text not null default 'backlog',
   position integer not null default 0,
   due_date date not null,
+  image text,
+  tags text[],
+  priority text not null default 'medium',
   created_at timestamptz default now() not null
 );
 
--- Create task_assignees table (join table)
-create table task_assignees (
+-- TASK ASSIGNEES (many-to-many)
+create table if not exists task_assignees (
   id uuid primary key default gen_random_uuid(),
   task_id uuid references tasks(id) on delete cascade not null,
   user_id uuid references profiles(id) on delete cascade not null,
@@ -53,149 +60,170 @@ create table task_assignees (
   unique(task_id, user_id)
 );
 
--- Create comments table
-create table comments (
+-- COMMENTS (threaded, for tasks)
+create table if not exists comments (
   id uuid primary key default gen_random_uuid(),
   task_id uuid references tasks(id) on delete cascade not null,
   user_id uuid references profiles(id) on delete cascade not null,
   content text not null,
+  parent_id uuid references comments(id) on delete cascade,
   created_at timestamptz default now() not null
 );
 
--- Set up Row Level Security (RLS) on profiles
+-- NOTIFICATIONS (optional, for future)
+create table if not exists notifications (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references profiles(id) on delete cascade not null,
+  type text not null,
+  message text not null,
+  read boolean default false,
+  created_at timestamptz default now() not null
+);
+
+-- =========================
+-- RLS (Row Level Security)
+-- =========================
+
+-- PROFILES
 alter table profiles enable row level security;
-
--- Create policy to allow users to view all profiles
 create policy "Profiles are viewable by all authenticated users"
-  on profiles for select
-  to authenticated
-  using (true);
-
--- Create policy to allow users to insert their own profile
+  on profiles for select using (auth.role() = 'authenticated');
 create policy "Users can insert their own profile"
-  on profiles for insert
-  to authenticated
-  with check (auth.uid() = id);
-
--- Create policy to allow users to update their own profile
+  on profiles for insert with check (auth.uid() = id);
 create policy "Users can update their own profile"
-  on profiles for update
-  to authenticated
-  using (auth.uid() = id)
-  with check (auth.uid() = id);
+  on profiles for update using (auth.uid() = id);
 
--- Set up Row Level Security (RLS) on projects
+-- PROJECTS
 alter table projects enable row level security;
-
--- Create policy for project members to view their projects
-create policy "Projects are viewable by team members" 
-  on projects for select 
-  to authenticated 
-  using (
-    exists (
+create policy "Projects are viewable by team members"
+  on projects for select using (
+    owner_id = auth.uid()
+    or manager_id = auth.uid()
+    or exists (
       select 1 from project_members
-      where project_members.project_id = id
+      where project_members.project_id = projects.id
       and project_members.user_id = auth.uid()
     )
   );
-
--- Create policy for project owners to update their projects
-create policy "Projects can be updated by owners" 
-  on projects for update 
-  to authenticated 
-  using (
-    exists (
+create policy "Projects can be inserted by owners"
+  on projects for insert with check (owner_id = auth.uid());
+create policy "Projects can be updated by owners and managers"
+  on projects for update using (
+    owner_id = auth.uid()
+    or manager_id = auth.uid()
+    or exists (
       select 1 from project_members
-      where project_members.project_id = id
+      where project_members.project_id = projects.id
       and project_members.user_id = auth.uid()
-      and project_members.role = 'owner'
+      and project_members.role in ('owner', 'manager')
     )
   );
-
--- Create policy for project owners to delete their projects
-create policy "Projects can be deleted by owners" 
-  on projects for delete 
-  to authenticated 
-  using (
-    exists (
+create policy "Projects can be deleted by owners"
+  on projects for delete using (
+    owner_id = auth.uid()
+    or exists (
       select 1 from project_members
-      where project_members.project_id = id
+      where project_members.project_id = projects.id
       and project_members.user_id = auth.uid()
       and project_members.role = 'owner'
     )
   );
 
--- Set up Row Level Security (RLS) on project_members
+-- PROJECT MEMBERS
 alter table project_members enable row level security;
-
--- Create policy for viewing project members
-create policy "Project members are viewable by team members" 
-  on project_members for select 
-  to authenticated 
-  using (
+create or replace policy "Project members are viewable by team members"
+  on project_members for select using (
     exists (
       select 1 from projects
-      join project_members as pm on pm.project_id = projects.id
-      where pm.project_id = project_members.project_id
-      and pm.user_id = auth.uid()
+      where projects.id = project_members.project_id
+      and (
+        projects.owner_id = auth.uid()
+        or projects.manager_id = auth.uid()
+      )
     )
+    or user_id = auth.uid()
   );
-
--- Create policy for project owners to add members
-create policy "Project members can be added by owners" 
-  on project_members for insert 
-  to authenticated 
-  with check (
-    exists (
-      select 1 from project_members
-      where project_members.project_id = project_id
-      and project_members.user_id = auth.uid()
-      and project_members.role = 'owner'
-    )
-  );
-
--- Create policy for project owners to update member roles
-drop policy if exists "Project member roles can be updated by owners" on project_members;
-create policy "Project member roles can be updated by owners" 
-  on project_members for update 
-  to authenticated 
-  using (
+create policy "Project members can be added by owners and managers"
+  on project_members for insert with check (
     exists (
       select 1 from projects
-      where projects.id = project_id
-      and projects.owner_id = auth.uid()
+      where projects.id = project_members.project_id
+      and (
+        projects.owner_id = auth.uid()
+        or projects.manager_id = auth.uid()
+        or exists (
+          select 1 from project_members pm
+          where pm.project_id = projects.id
+          and pm.user_id = auth.uid()
+          and pm.role in ('owner', 'manager')
+        )
+      )
     )
-  )
-  with check (
+  );
+create policy "Project member roles can be updated by owners and managers"
+  on project_members for update using (
     exists (
       select 1 from projects
-      where projects.id = project_id
-      and projects.owner_id = auth.uid()
+      where projects.id = project_members.project_id
+      and (
+        projects.owner_id = auth.uid()
+        or projects.manager_id = auth.uid()
+        or exists (
+          select 1 from project_members pm
+          where pm.project_id = projects.id
+          and pm.user_id = auth.uid()
+          and pm.role in ('owner', 'manager')
+        )
+      )
     )
   );
-
--- Create policy for project owners to remove members
-create policy "Project members can be removed by owners" 
-  on project_members for delete 
-  to authenticated 
-  using (
+create policy "Project members can be removed by owners and managers"
+  on project_members for delete using (
     exists (
-      select 1 from project_members
-      where project_members.project_id = project_id
-      and project_members.user_id = auth.uid()
-      and project_members.role = 'owner'
+      select 1 from projects
+      where projects.id = project_members.project_id
+      and (
+        projects.owner_id = auth.uid()
+        or projects.manager_id = auth.uid()
+        or exists (
+          select 1 from project_members pm
+          where pm.project_id = projects.id
+          and pm.user_id = auth.uid()
+          and pm.role in ('owner', 'manager')
+        )
+      )
     )
-    or user_id = auth.uid() -- Users can remove themselves
+    or user_id = auth.uid()
   );
 
--- Set up Row Level Security (RLS) on tasks
+-- TASKS
 alter table tasks enable row level security;
-
--- Create policy for viewing tasks
-create policy "Tasks are viewable by project members" 
-  on tasks for select 
-  to authenticated 
-  using (
+create policy "Tasks are viewable by project members"
+  on tasks for select using (
+    exists (
+      select 1 from project_members
+      where project_members.project_id = tasks.project_id
+      and project_members.user_id = auth.uid()
+    )
+  );
+create policy "Tasks can be created by project members"
+  on tasks for insert with check (
+    exists (
+      select 1 from project_members
+      where project_members.project_id = tasks.project_id
+      and project_members.user_id = auth.uid()
+    )
+  );
+create policy "Tasks can be updated by project members"
+  on tasks for update using (
+    exists (
+      select 1 from project_members
+      where project_members.project_id = tasks.project_id
+      and project_members.user_id = auth.uid()
+    )
+  );
+create policy "Tasks can be deleted by project members"
+  on tasks for delete using (
     exists (
       select 1 from project_members
       where project_members.project_id = tasks.project_id
@@ -203,50 +231,28 @@ create policy "Tasks are viewable by project members"
     )
   );
 
--- Create policy for project members to create tasks
-create policy "Tasks can be created by project members" 
-  on tasks for insert 
-  to authenticated 
-  with check (
-    exists (
-      select 1 from project_members
-      where project_members.project_id = tasks.project_id
-      and project_members.user_id = auth.uid()
-    )
-  );
-
--- Create policy for project members to update tasks
-create policy "Tasks can be updated by project members" 
-  on tasks for update 
-  to authenticated 
-  using (
-    exists (
-      select 1 from project_members
-      where project_members.project_id = tasks.project_id
-      and project_members.user_id = auth.uid()
-    )
-  );
-
--- Create policy for project members to delete tasks
-create policy "Tasks can be deleted by project members" 
-  on tasks for delete 
-  to authenticated 
-  using (
-    exists (
-      select 1 from project_members
-      where project_members.project_id = tasks.project_id
-      and project_members.user_id = auth.uid()
-    )
-  );
-
--- Set up Row Level Security (RLS) on task_assignees
+-- TASK ASSIGNEES
 alter table task_assignees enable row level security;
-
--- Create policy for viewing task assignees
-create policy "Task assignees are viewable by project members" 
-  on task_assignees for select 
-  to authenticated 
-  using (
+create policy "Task assignees are viewable by project members"
+  on task_assignees for select using (
+    exists (
+      select 1 from tasks
+      join project_members on project_members.project_id = tasks.project_id
+      where tasks.id = task_assignees.task_id
+      and project_members.user_id = auth.uid()
+    )
+  );
+create policy "Task assignees can be added by project members"
+  on task_assignees for insert with check (
+    exists (
+      select 1 from tasks
+      join project_members on project_members.project_id = tasks.project_id
+      where tasks.id = task_assignees.task_id
+      and project_members.user_id = auth.uid()
+    )
+  );
+create policy "Task assignees can be removed by project members"
+  on task_assignees for delete using (
     exists (
       select 1 from tasks
       join project_members on project_members.project_id = tasks.project_id
@@ -255,40 +261,10 @@ create policy "Task assignees are viewable by project members"
     )
   );
 
--- Create policy for project members to add assignees
-create policy "Task assignees can be added by project members" 
-  on task_assignees for insert 
-  to authenticated 
-  with check (
-    exists (
-      select 1 from tasks
-      join project_members on project_members.project_id = tasks.project_id
-      where tasks.id = task_assignees.task_id
-      and project_members.user_id = auth.uid()
-    )
-  );
-
--- Create policy for project members to remove assignees
-create policy "Task assignees can be removed by project members" 
-  on task_assignees for delete 
-  to authenticated 
-  using (
-    exists (
-      select 1 from tasks
-      join project_members on project_members.project_id = tasks.project_id
-      where tasks.id = task_assignees.task_id
-      and project_members.user_id = auth.uid()
-    )
-  );
-
--- Set up Row Level Security (RLS) on comments
+-- COMMENTS
 alter table comments enable row level security;
-
--- Create policy for viewing comments
-create policy "Comments are viewable by project members" 
-  on comments for select 
-  to authenticated 
-  using (
+create policy "Comments are viewable by project members"
+  on comments for select using (
     exists (
       select 1 from tasks
       join project_members on project_members.project_id = tasks.project_id
@@ -296,12 +272,8 @@ create policy "Comments are viewable by project members"
       and project_members.user_id = auth.uid()
     )
   );
-
--- Create policy for project members to add comments
-create policy "Comments can be added by project members" 
-  on comments for insert 
-  to authenticated 
-  with check (
+create policy "Comments can be added by project members"
+  on comments for insert with check (
     exists (
       select 1 from tasks
       join project_members on project_members.project_id = tasks.project_id
@@ -309,30 +281,21 @@ create policy "Comments can be added by project members"
       and project_members.user_id = auth.uid()
     )
   );
+create policy "Users can delete their own comments"
+  on comments for delete using (user_id = auth.uid());
 
--- Create policy for users to delete their own comments
-create policy "Users can delete their own comments" 
-  on comments for delete 
-  to authenticated 
-  using (user_id = auth.uid());
-
--- Function to create trigger to handle user creation
-create or replace function public.handle_new_user() 
+-- TRIGGER: Auto-create profile on signup
+create or replace function public.handle_new_user()
 returns trigger as $$
 begin
-  insert into public.profiles (id, email, name, image, role)
-  values (
-    new.id, 
-    new.email,
-    coalesce(new.raw_user_meta_data->>'name', split_part(new.email, '@', 1)),
-    'https://i.pravatar.cc/150?img=' || floor(random() * 70)::text,
-    'member'
-  );
+  insert into public.profiles (id, email, name)
+  values (new.id, new.email, new.raw_user_meta_data->>'name')
+  on conflict do nothing;
   return new;
 end;
 $$ language plpgsql security definer;
 
--- Create trigger for new user creation
+drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();

@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { supabase, Project, ProjectMember, Profile } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
@@ -108,15 +107,17 @@ export function useProjects() {
 
   // Create a new project
   const createProject = async (
-    name: string, 
-    description: string, 
+    name: string,
+    description: string,
     startDate: string,
     dueDate: string,
+    tags: string[] = [],
+    priority: string = 'medium',
+    manager_id: string | null = null,
+    image: string | null = null
   ): Promise<string | null> => {
     if (!user) return null;
-    
     try {
-      // Create project
       const { data: newProject, error: projectError } = await supabase
         .from('projects')
         .insert({
@@ -126,14 +127,16 @@ export function useProjects() {
           due_date: dueDate,
           status: 'new',
           owner_id: user.id,
+          tags,
+          priority,
+          manager_id,
+          image
         })
         .select()
         .single();
-      
       if (projectError) {
         throw projectError;
       }
-      
       // Add current user as project member with owner role
       const { error: memberError } = await supabase
         .from('project_members')
@@ -142,19 +145,14 @@ export function useProjects() {
           user_id: user.id,
           role: 'owner',
         });
-      
       if (memberError) {
         throw memberError;
       }
-      
-      // Refresh projects list
       fetchProjects();
-      
       toast({
         title: "Project created",
         description: `Your new project "${name}" has been created.`,
       });
-      
       return newProject.id;
     } catch (err) {
       console.error('Error creating project:', err);
